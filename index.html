@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1e3a5f">
+<title>CMI PIE - SLEP Andalién Costa</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f1f5f9;color:#1e293b;padding-bottom:72px}
+header{background:#1e3a5f;color:#fff;padding:14px 16px;position:sticky;top:0;z-index:5}
+header h1{font-size:17px;margin:0}
+header small{opacity:.85;font-size:12px}
+main{padding:12px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:#fff;border-top:1px solid #cbd5e1;z-index:5}
+nav button{flex:1;padding:9px 0;border:0;background:none;font-size:11px;color:#475569}
+nav button.act{color:#1e3a5f;font-weight:bold;border-top:3px solid #1e3a5f}
+.card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.kpi{background:#fff;border-radius:12px;padding:12px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.kpi b{font-size:22px;color:#1e3a5f;display:block}
+.kpi span{font-size:12px;color:#64748b}
+h2{font-size:18px;margin:4px 0 10px}
+h3{font-size:15px;margin:4px 0 8px;color:#1e3a5f}
+input,select,textarea{width:100%;padding:9px;margin:3px 0 8px;border:1px solid #cbd5e1;border-radius:8px;font-size:15px;background:#fff}
+button.btn{background:#1e3a5f;color:#fff;border:0;padding:11px 14px;border-radius:8px;font-size:14px;width:100%;margin-top:4px}
+button.sec{background:#e2e8f0;color:#1e293b}
+button.mini{background:#e2e8f0;border:0;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:4px}
+button.del{background:#fee2e2;color:#b91c1c;border:0;padding:4px 8px;border-radius:6px;font-size:12px;margin-left:4px}
+.item{border-bottom:1px solid #e2e8f0;padding:9px 0;font-size:14px}
+.item:last-child{border-bottom:0}
+.meta{font-size:12px;color:#64748b}
+.tag{display:inline-block;background:#e0f2fe;color:#075985;border-radius:6px;padding:2px 6px;font-size:11px;margin-right:4px}
+.tag.warn{background:#fef3c7;color:#92400e}
+.tag.ok{background:#dcfce7;color:#166534}
+.bar{background:#e2e8f0;border-radius:6px;height:10px;overflow:hidden;margin:6px 0}
+.bar div{background:#16a34a;height:100%}
+.persp{border-left:4px solid #1e3a5f;padding-left:10px;margin-bottom:12px}
+.persp p{margin:4px 0;font-size:14px}
+.late{color:#dc2626;font-weight:bold}
+.empty{color:#94a3b8;font-size:14px;text-align:center;padding:10px}
+.row{display:flex;gap:8px}
+.row>*{flex:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>CMI Psicólogo PIE</h1>
+  <small>SLEP Andalién Costa</small>
+</header>
+
+<main id="app"></main>
+
+<nav id="nav"></nav>
+
+<script>
+const KEY = 'cmi_pie_andalien_v1';
+const TIPOS_NEE = ['TEA','TDAH','Discapacidad Intelectual','Trastorno Específico del Lenguaje (TEL)','Discapacidad Auditiva','Discapacidad Visual','Disfasia','Funcionamiento Intelectual Limítrofe','Dificultades Específicas del Aprendizaje (DEA)','Trastorno de Déficit Atencional','Otra'];
+const TIPOS_ATENCION = ['Intervención individual','Intervención grupal','Evaluación psicoeducativa','Entrevista familia','Coordinación docente','Observación de aula','Capacitación / Formación','Otra'];
+
+let S = load();
+let cur = 'inicio';
+
+function load(){
+  try{
+    const d = JSON.parse(localStorage.getItem(KEY));
+    if(d) return d;
+  }catch(e){}
+  return {students:[],sessions:[],goals:[],meetings:[],tasks:[],formacion:0};
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function hoy(){ return new Date().toISOString().slice(0,10); }
+function mesActual(){ return hoy().slice(0,7); }
+function diasDesde(f){ return Math.floor((new Date(hoy()) - new Date(f))/86400000); }
+function nombreEst(id){ const e=S.students.find(x=>x.id===id); return e? e.codigo : '—'; }
+function opts(arr, sel){ return arr.map(o=>`<option ${o===sel?'selected':''}>${esc(o)}</option>`).join(''); }
+function studentOpts(sel){ return S.students.map(s=>`<option value="${s.id}" ${s.id===sel?'selected':''}>${esc(s.codigo)} - ${esc(s.nee)}</option>`).join(''); }
+
+const vistas = {
+  inicio:{t:'Inicio',i:'📊'},
+  estudiantes:{t:'Estudiantes',i:'👦'},
+  atenciones:{t:'Atenciones',i:'📝'},
+  planes:{t:'Planes',i:'🎯'},
+  familias:{t:'Familias',i:'👪'},
+  tareas:{t:'Tareas',i:'✅'},
+  respaldo:{t:'Respaldo',i:'💾'}
+};
+
+function render(){
+  document.getElementById('nav').innerHTML = Object.keys(vistas).map(k=>
+    `<button class="${k===cur?'act':''}" onclick="go('${k}')">${vistas[k].i}<br>${vistas[k].t}</button>`).join('');
+  const fn = {inicio:vInicio,estudiantes:vEst,atenciones:vAt,planes:vPlanes,familias:vFam,tareas:vTar,respaldo:vRes}[cur];
+  document.getElementById('app').innerHTML = fn();
+}
+function go(v){ cur=v; render(); window.scrollTo(0,0); }
+
+/* ================= INICIO / CMI ================= */
+function vInicio(){
+  const activos = S.students.filter(s=>s.estado==='Activo');
+  const atMes = S.sessions.filter(s=>s.fecha.startsWith(mesActual()));
+  const conNotas = S.sessions.filter(s=>s.desc && s.desc.trim().length>10).length;
+  const pctNotas = S.sessions.length? Math.round(conNotas/S.sessions.length*100):0;
+  const metas = S.goals;
+  const avgMetas = metas.length? Math.round(metas.reduce((a,g)=>a+g.progreso,0)/metas.length):0;
+  const metasLogradas = metas.filter(g=>g.progreso>=100).length;
+  const reun = S.meetings;
+  const reunRealizadas = reun.filter(r=>r.estado==='Realizada').length;
+  const pctReun = reun.length? Math.round(reunRealizadas/reun.length*100):0;
+  const tareas = S.tasks;
+  const tHechas = tareas.filter(t=>t.done).length;
+  const pctTareas = tareas.length? Math.round(tHechas/tareas.length*100):0;
+  const sinAtencion = activos.filter(s=>{
+    const u = S.sessions.filter(x=>x.estudiante===s.id).sort((a,b)=>b.fecha.localeCompare(a.fecha))[0];
+    return !u || diasDesde(u.fecha)>30;
+  });
+  const formacion = S.sessions.filter(s=>s.tipo==='Capacitación / Formación').reduce((a,s)=>a+(+s.duracion||0),0)/60;
+  const vencidas = S.tasks.filter(t=>!t.done && t.vence && t.vence<hoy()).length;
+
+  return `
+  <div class="kpis">
+    <div class="kpi"><b>${activos.length}</b><span>Estudiantes PIE activos</span></div>
+    <div class="kpi"><b>${atMes.length}</b><span>Atenciones este mes</span></div>
+    <div class="kpi"><b>${avgMetas}%</b><span>Avance promedio de metas</span></div>
+    <div class="kpi"><b>${vencidas}</b><span>Tareas vencidas</span></div>
+  </div>
+
+  <h2>Cuadro de Mando Integral</h2>
+
+  <div class="card persp">
+    <h3>1. Perspectiva Estudiantes (impacto)</h3>
+    <p>Metas logradas: <b>${metasLogradas}</b> de ${metas.length}</p>
+    <p>Avance promedio de planes:</p>
+    <div class="bar"><div style="width:${avgMetas}%"></div></div>
+    <p class="meta">Meta sugerida: ≥ 70% de avance promedio al cierre de semestre.</p>
+  </div>
+
+  <div class="card persp">
+    <h3>2. Procesos internos (gestión)</h3>
+    <p>Atenciones registradas: <b>${S.sessions.length}</b></p>
+    <p>Atenciones con descripción completa: <b>${pctNotas}%</b></p>
+    <p>Estudiantes activos sin atención en 30 días: <b class="${sinAtencion.length?'late':''}">${sinAtencion.length}</b></p>
+    ${sinAtencion.length? '<p class="meta">'+sinAtencion.slice(0,8).map(s=>esc(s.codigo)).join(', ')+'</p>':''}
+  </div>
+
+  <div class="card persp">
+    <h3>3. Familias y comunidad</h3>
+    <p>Reuniones realizadas: <b>${reunRealizadas}</b> de ${reun.length}</p>
+    <div class="bar"><div style="width:${pctReun}%"></div></div>
+    <p class="meta">Meta sugerida: al menos una reunión por semestre con cada familia.</p>
+  </div>
+
+  <div class="card persp">
+    <h3>4. Aprendizaje y desarrollo profesional</h3>
+    <p>Horas de formación registradas: <b>${formacion.toFixed(1)}</b></p>
+    <p>Tareas de gestión completadas: <b>${pctTareas}%</b></p>
+    <div class="bar"><div style="width:${pctTareas}%"></div></div>
+  </div>
+  `;
+}
+
+/* ================= ESTUDIANTES ================= */
+function vEst(){
+  const lista = S.students.map(s=>`
+    <div class="item">
+      <b>${esc(s.codigo)}</b> <span class="tag">${esc(s.curso)}</span>
+      <span class="tag ${s.estado==='Activo'?'ok':'warn'}">${esc(s.estado)}</span><br>
+      <span class="meta">${esc(s.nee)} · Evaluado: ${esc(s.fechaEval||'—')} · Reevaluación: ${esc(s.fechaReeval||'—')}</span><br>
+      <span class="meta">${esc(s.obs)}</span>
+      <div style="margin-top:4px">
+        <button class="mini" onclick="cambiarEstado('${s.id}')">Cambiar estado</button>
+        <button class="del" onclick="borrar('students','${s.id}')">Eliminar</button>
+      </div>
+    </div>`).join('') || '<p class="empty">Sin estudiantes registrados.</p>';
+
+  return `
+  <h2>Estudiantes PIE</h2>
+  <div class="card">
+    <h3>Nuevo estudiante</h3>
+    <p class="meta">Usa código o iniciales, no nombres completos (protección de datos personales).</p>
+    <input id="e_cod" placeholder="Código o iniciales (ej: M.G.R.)">
+    <div class="row">
+      <input id="e_curso" placeholder="Curso (ej: 3° Básico B)">
+      <select id="e_estado"><option>Activo</option><option>Egresado</option><option>Retirado</option></select>
+    </div>
+    <select id="e_nee">${opts(TIPOS_NEE)}</select>
+    <div class="row">
+      <div><small class="meta">Fecha evaluación</small><input type="date" id="e_fe"></div>
+      <div><small class="meta">Fecha reevaluación</small><input type="date" id="e_fr"></div>
+    </div>
+    <textarea id="e_obs" rows="2" placeholder="Observaciones generales"></textarea>
+    <button class="btn" onclick="addEst()">Guardar estudiante</button>
+  </div>
+  <div class="card">${lista}</div>`;
+}
+function addEst(){
+  const cod=document.getElementById('e_cod').value.trim();
+  if(!cod){ alert('Ingresa un código o iniciales'); return; }
+  S.students.push({id:uid(),codigo:cod,curso:document.getElementById('e_curso').value.trim(),
+    estado:document.getElementById('e_estado').value,nee:document.getElementById('e_nee').value,
+    fechaEval:document.getElementById('e_fe').value,fechaReeval:document.getElementById('e_fr').value,
+    obs:document.getElementById('e_obs').value.trim()});
+  save(); render();
+}
+function cambiarEstado(id){
+  const s=S.students.find(x=>x.id===id);
+  const orden=['Activo','Egresado','Retirado'];
+  s.estado=orden[(orden.indexOf(s.estado)+1)%orden.length];
+  save(); render();
+}
+function borrar(col,id){
+  if(!confirm('¿Eliminar este registro?')) return;
+  S[col]=S[col].filter(x=>x.id!==id); save(); render();
+}
+
+/* ================= ATENCIONES ================= */
+function vAt(){
+  const lista=[...S.sessions].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(s=>`
+    <div class="item">
+      <b>${esc(s.fecha)}</b> · <span class="tag">${esc(s.tipo)}</span>
+      <span class="tag">${esc(s.duracion)} min</span><br>
+      <span class="meta">Estudiante: ${esc(nombreEst(s.estudiante))}</span><br>
+      ${esc(s.desc)}
+      <div style="margin-top:4px"><button class="del" onclick="borrar('sessions','${s.id}')">Eliminar</button></div>
+    </div>`).join('') || '<p class="empty">Sin atenciones registradas.</p>';
+
+  return `
+  <h2>Registro de atenciones</h2>
+  <div class="card">
+    <h3>Nueva atención</h3>
+    <div class="row">
+      <div><input type="date" id="a_f" value="${hoy()}"></div>
+      <div><input type="number" id="a_d" placeholder="Minutos" value="45"></div>
+    </div>
+    <select id="a_t">${opts(TIPOS_ATENCION)}</select>
+    <select id="a_e"><option value="">— Sin estudiante específico —</option>${studentOpts()}</select>
+    <textarea id="a_desc" rows="3" placeholder="Descripción: objetivo, intervención, avances, acuerdos (mín. 10 caracteres)"></textarea>
+    <button class="btn" onclick="addAt()">Guardar atención</button>
+  </div>
+  <div class="card">${lista}</div>`;
+}
+function addAt(){
+  const desc=document.getElementById('a_desc').value.trim();
+  S.sessions.push({id:uid(),fecha:document.getElementById('a_f').value||hoy(),
+    duracion:document.getElementById('a_d').value||0,tipo:document.getElementById('a_t').value,
+    estudiante:document.getElementById('a_e').value,desc});
+  save(); render();
+}
+
+/* ================= PLANES / METAS ================= */
+function vPlanes(){
+  const lista=S.goals.map(g=>`
+    <div class="item">
+      <b>${esc(g.meta)}</b><br>
+      <span class="meta">${esc(nombreEst(g.estudiante))} · Plazo: ${esc(g.plazo||'—')}</span>
+      <div class="bar"><div style="width:${g.progreso}%"></div></div>
+      <span class="meta">${g.progreso}% ${g.plazo && g.plazo<hoy() && g.progreso<100?'<span class="late">· Vencida</span>':''}</span>
+      <div style="margin-top:4px">
+        <button class="mini" onclick="avanzar('${g.id}')">+10%</button>
+        <button class="mini" onclick="setProg('${g.id}')">Editar %</button>
+        <button class="del" onclick="borrar('goals','${g.id}')">Eliminar</button>
+      </div>
+    </div>`).join('') || '<p class="empty">Sin metas registradas.</p>';
+
+  return `
+  <h2>Planes de apoyo y metas</h2>
+  <div class="card">
+    <h3>Nueva meta</h3>
+    <select id="g_e">${studentOpts()}</select>
+    <textarea id="g_m" rows="2" placeholder="Meta (ej: Mejorar comprensión lectora nivel 2 en textos de 1 página)"></textarea>
+    <input type="date" id="g_p">
+    <button class="btn" onclick="addGoal()">Guardar meta</button>
+  </div>
+  <div class="card">${lista}</div>`;
+}
+function addGoal(){
+  const m=document.getElementById('g_m').value.trim();
+  if(!m){ alert('Escribe la meta'); return; }
+  S.goals.push({id:uid(),estudiante:document.getElementById('g_e').value,meta:m,
+    plazo:document.getElementById('g_p').value,progreso:0});
+  save(); render();
+}
+function avanzar(id){
+  const g=S.goals.find(x=>x.id===id); g.progreso=Math.min(100,g.progreso+10); save(); render();
+}
+function setProg(id){
+  const g=S.goals.find(x=>x.id===id);
+  const v=prompt('Porcentaje de avance (0-100):',g.progreso);
+  if(v===null) return;
+  g.progreso=Math.max(0,Math.min(100,+v||0)); save(); render();
+}
+
+/* ================= FAMILIAS ================= */
+function vFam(){
+  const lista=[...S.meetings].sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(r=>`
+    <div class="item">
+      <b>${esc(r.fecha)}</b> <span class="tag ${r.estado==='Realizada'?'ok':r.estado==='Cancelada'?'warn':''}">${esc(r.estado)}</span><br>
+      <span class="meta">${esc(nombreEst(r.estudiante))} · ${esc(r.participantes)}</span><br>
+      ${esc(r.tema)}
+      <div style="margin-top:4px">
+        <button class="mini" onclick="cambiarReun('${r.id}')">Cambiar estado</button>
+        <button class="del" onclick="borrar('meetings','${r.id}')">Eliminar</button>
+      </div>
+    </div>`).join('') || '<p class="empty">Sin reuniones registradas.</p>';
+
+  return `
+  <h2>Reuniones con familias y equipo</h2>
+  <div class="card">
+    <h3>Nueva reunión</h3>
+    <div class="row">
+      <input type="date" id="r_f" value="${hoy()}">
+      <select id="r_s"><option>Programada</option><option>Realizada</option><option>Cancelada</option></select>
+    </div>
+    <select id="r_e"><option value="">— General —</option>${studentOpts()}</select>
+    <input id="r_p" placeholder="Participantes (ej: madre, profesora jefa, UTP)">
+    <textarea id="r_t" rows="2" placeholder="Tema y acuerdos"></textarea>
+    <button class="btn" onclick="addReun()">Guardar reunión</button>
+  </div>
+  <div class="card">${lista}</div>`;
+}
+function addReun(){
+  S.meetings.push({id:uid(),fecha:document.getElementById('r_f').value||hoy(),
+    estado:document.getElementById('r_s').value,estudiante:document.getElementById('r_e').value,
+    participantes:document.getElementById('r_p').value,tema:document.getElementById('r_t').value});
+  save(); render();
+}
+function cambiarReun(id){
+  const r=S.meetings.find(x=>x.id===id);
+  const orden=['Programada','Realizada','Cancelada'];
+  r.estado=orden[(orden.indexOf(r.estado)+1)%orden.length];
+  save(); render();
+}
+
+/* ================= TAREAS ================= */
+function vTar(){
+  const lista=[...S.tasks].sort((a,b)=>(a.done-b.done)||(a.vence||'9999').localeCompare(b.vence||'9999')).map(t=>{
+    const venc = !t.done && t.vence && t.vence<hoy();
+    return `<div class="item">
+      <label><input type="checkbox" style="width:auto" ${t.done?'checked':''} onchange="toggleTarea('${t.id}')">
+      <b style="${t.done?'text-decoration:line-through;color:#94a3b8':''}">${esc(t.desc)}</b></label><br>
+      <span class="tag">${esc(t.tipo)}</span>
+      <span class="meta ${venc?'late':''}">Vence: ${esc(t.vence||'—')}${venc?' (vencida)':''}</span>
+      <div style="margin-top:4px"><button class="del" onclick="borrar('tasks','${t.id}')">Eliminar</button></div>
+    </div>`;}).join('') || '<p class="empty">Sin tareas.</p>';
+
+  return `
+  <h2>Tareas y gestión</h2>
+  <div class="card">
+    <h3>Nueva tarea</h3>
+    <input id="t_d" placeholder="Descripción (ej: Entregar informe PIE a UTP)">
+    <div class="row">
+      <select id="t_t">${opts(['Gestión','Informe','Coordinación','Formación','Administrativa'])}</select>
+      <input type="date" id="t_v">
+    </div>
+    <button class="btn" onclick="addTarea()">Guardar tarea</button>
+  </div>
+  <div class="card">${lista}</div>`;
+}
+function addTarea(){
+  const d=document.getElementById('t_d').value.trim();
+  if(!d){ alert('Escribe la descripción'); return; }
+  S.tasks.push({id:uid(),desc:d,tipo:document.getElementById('t_t').value,
+    vence:document.getElementById('t_v').value,done:false});
+  save(); render();
+}
+function toggleTarea(id){
+  const t=S.tasks.find(x=>x.id===id); t.done=!t.done; save(); render();
+}
+
+/* ================= RESPALDO ================= */
+function vRes(){
+  return `
+  <h2>Respaldo de datos</h2>
+  <div class="card">
+    <p class="meta">Los datos se guardan solo en este equipo. Exporta un respaldo periódicamente y guárdalo en un lugar seguro.</p>
+    <button class="btn" onclick="exportar()">Exportar respaldo (.json)</button>
+  </div>
+  <div class="card">
+    <h3>Importar respaldo</h3>
+    <input type="file" accept="application/json" onchange="importar(this)">
+    <p class="meta">Esto reemplaza los datos actuales.</p>
+  </div>
+  <div class="card">
+    <button class="btn sec" onclick="if(confirm('¿Borrar TODOS los datos?')){localStorage.removeItem(KEY);S=load();render();}">Borrar todos los datos</button>
+  </div>`;
+}
+function exportar(){
+  const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='respaldo_cmi_pie_'+hoy()+'.json'; a.click();
+}
+function importar(input){
+  const f=input.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ S=JSON.parse(r.result); save(); render(); alert('Respaldo importado'); }catch(e){ alert('Archivo no válido'); } };
+  r.readAsText(f);
+}
+
+render();
+</script>
+</body>
+</html>
